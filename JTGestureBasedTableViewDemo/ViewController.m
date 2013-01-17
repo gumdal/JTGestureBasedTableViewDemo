@@ -198,7 +198,7 @@
 - (NSArray*)gestureRecognizer:(JTTableViewGestureRecognizer *)gestureRecognizer willCreateMultipleCellsAtIndexPath:(NSIndexPath *)indexPath;
 {
     NSMutableArray *arrayOfIndexPathsToCreate = [NSMutableArray array];
-    for (int i=0; i<3; i++)
+    for (int i=0; i<5; i++)
         [arrayOfIndexPathsToCreate addObject:[NSIndexPath indexPathForRow:indexPath.row+i
                                                                 inSection:indexPath.section]];
     return arrayOfIndexPathsToCreate;

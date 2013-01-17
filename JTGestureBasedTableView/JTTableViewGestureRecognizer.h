@@ -58,6 +58,12 @@ extern CGFloat const JTTableViewRowAnimationDuration;
 @end
 
 
+@protocol JTTableViewGestureShrinkRowDelegate <NSObject>
+
+-(void)gestureRecognizer:(JTTableViewGestureRecognizer*)gestureRecognizer needsShrinkRowsAtIndexPaths:(NSArray**)inOutIndexPathsArray;
+
+@end
+
 // Conform to JTTableViewGestureEditingRowDelegate to enable features
 // - swipe to edit cell
 @protocol JTTableViewGestureEditingRowDelegate <NSObject>

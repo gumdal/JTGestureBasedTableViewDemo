@@ -35,6 +35,7 @@ CGFloat const JTTableViewRowAnimationDuration          = 0.25;       // Rough gu
 @property (nonatomic, strong) UIImage                       *cellSnapshot;
 @property (nonatomic, assign) CGFloat                        scrollingRate;
 @property (nonatomic, strong) NSTimer                       *movingTimer;
+@property (nonatomic, assign) BOOL                          pinchOperationRowsUpdated;
 
 - (void)updateAddingIndexPathForCurrentLocation;
 - (void)commitOrDiscardCell;
@@ -49,6 +50,7 @@ CGFloat const JTTableViewRowAnimationDuration          = 0.25;       // Rough gu
 @synthesize pinchRecognizer, panRecognizer, longPressRecognizer;
 @synthesize state, addingCellState;
 @synthesize cellSnapshot, scrollingRate, movingTimer;
+@synthesize pinchOperationRowsUpdated;
 
 - (void)scrollTable {
     // Scroll tableview while touch point is on top or bottom part
@@ -148,6 +150,7 @@ CGFloat const JTTableViewRowAnimationDuration          = 0.25;       // Rough gu
         if (self.addingIndexPaths) {
             [self commitOrDiscardCell];
         }
+        [self setPinchOperationRowsUpdated:NO];
         return;
     }
     
@@ -158,7 +161,8 @@ CGFloat const JTTableViewRowAnimationDuration          = 0.25;       // Rough gu
     CGRect  rect = (CGRect){location1, location2.x - location1.x, location2.y - location1.y};
     
     if (recognizer.state == UIGestureRecognizerStateBegan) {
-        NSAssert(self.addingIndexPaths != nil, @"self.addingIndexPath must not be nil, we should have set it in recognizerShouldBegin");
+//        NSAssert(self.addingIndexPaths != nil, @"self.addingIndexPath must not be nil, we should have set it in recognizerShouldBegin");
+        [self setPinchOperationRowsUpdated:NO];
 
         self.state = JTTableViewGestureRecognizerStatePinching;
 
@@ -168,23 +172,56 @@ CGFloat const JTTableViewRowAnimationDuration          = 0.25;       // Rough gu
         // Creating contentInset to fulfill the whole screen, so our tableview won't occasionaly
         // bounds back to the top while we don't have enough cells on the screen
         self.tableView.contentInset = UIEdgeInsetsMake(self.tableView.frame.size.height, 0, self.tableView.frame.size.height, 0);
-
-//        [self.tableView beginUpdates];
-//        [self.delegate gestureRecognizer:self needsAddRowAtIndexPaths:self.addingIndexPaths];
-        NSArray *rowsToAdd = self.addingIndexPaths;
-        [self.delegate gestureRecognizer:self
-                 needsAddRowAtIndexPaths:rowsToAdd];
-
-        [self.tableView insertRowsAtIndexPaths:rowsToAdd
-                              withRowAnimation:UITableViewRowAnimationNone];
-//        [self.tableView endUpdates];
-        [self.tableView reloadData];
-
-    } else if (recognizer.state == UIGestureRecognizerStateChanged) {
+    }
+    else if (recognizer.state == UIGestureRecognizerStateChanged)
+    {
+        CGPoint newUpperPoint = upperPoint;
+        CGFloat diffOffsetY = self.startPinchingUpperPoint.y - newUpperPoint.y;
+        if (![self pinchOperationRowsUpdated])
+        {
+            CGRect  rect = (CGRect){location1, location2.x - location1.x, location2.y - location1.y};
+            NSArray *indexPaths = [self.tableView indexPathsForRowsInRect:rect];
+            
+            NSIndexPath *firstIndexPath = [indexPaths objectAtIndex:0];
+            NSIndexPath *lastIndexPath  = [indexPaths lastObject];
+            NSInteger    midIndex = ((float)(firstIndexPath.row + lastIndexPath.row) / 2) + 0.5;
+            NSIndexPath *midIndexPath = [NSIndexPath indexPathForRow:midIndex inSection:firstIndexPath.section];
+            
+            if (diffOffsetY>0) // Positive is zoom in / pinch in
+            {
+                // Now first create the rows in datasource
+                if ([self.delegate respondsToSelector:@selector(gestureRecognizer:willCreateMultipleCellsAtIndexPath:)])
+                {
+                    self.addingIndexPaths = [self.delegate gestureRecognizer:self
+                                          willCreateMultipleCellsAtIndexPath:midIndexPath];
+                }
+                else if ([self.delegate respondsToSelector:@selector(gestureRecognizer:willCreateCellAtIndexPath:)]) {
+                    self.addingIndexPaths = [NSArray arrayWithObject:[self.delegate gestureRecognizer:self willCreateCellAtIndexPath:midIndexPath]];
+                } else {
+                    self.addingIndexPaths = [NSArray arrayWithObject:midIndexPath];
+                }
+                
+//                [self.tableView beginUpdates];
+//                [self.delegate gestureRecognizer:self needsAddRowAtIndexPaths:self.addingIndexPaths];
+                NSArray *rowsToAdd = self.addingIndexPaths;
+                [self.delegate gestureRecognizer:self
+                         needsAddRowAtIndexPaths:rowsToAdd];
+                
+                [self.tableView insertRowsAtIndexPaths:rowsToAdd
+                                      withRowAnimation:UITableViewRowAnimationNone];
+//                [self.tableView endUpdates];
+                [self.tableView reloadData];
+                [self setPinchOperationRowsUpdated:YES];
+            }
+            else if (diffOffsetY<0)
+            {
+                [self setPinchOperationRowsUpdated:YES];
+            }
+        }
         
         CGFloat diffRowHeight = CGRectGetHeight(rect) - CGRectGetHeight(rect)/[recognizer scale];
         
-//        NSLog(@"%f %f %f", CGRectGetHeight(rect), CGRectGetHeight(rect)/[recognizer scale], [recognizer scale]);
+        //        NSLog(@"%f %f %f", CGRectGetHeight(rect), CGRectGetHeight(rect)/[recognizer scale], [recognizer scale]);
         if (self.addingRowHeight - diffRowHeight >= 1 || self.addingRowHeight - diffRowHeight <= -1) {
             self.addingRowHeight = diffRowHeight;
             [self.tableView reloadData];
@@ -192,8 +229,6 @@ CGFloat const JTTableViewRowAnimationDuration          = 0.25;       // Rough gu
         
         // Scrolls tableview according to the upper touch point to mimic a realistic
         // dragging gesture
-        CGPoint newUpperPoint = upperPoint;
-        CGFloat diffOffsetY = self.startPinchingUpperPoint.y - newUpperPoint.y;
         CGPoint newOffset   = (CGPoint){self.tableView.contentOffset.x, self.tableView.contentOffset.y+diffOffsetY};
         [self.tableView setContentOffset:newOffset animated:NO];
     }
@@ -417,33 +452,9 @@ CGFloat const JTTableViewRowAnimationDuration          = 0.25;       // Rough gu
             NSLog(@"Should not begin pinch");
             return NO;
         }
-
-        CGPoint location1 = [gestureRecognizer locationOfTouch:0 inView:self.tableView];
-        CGPoint location2 = [gestureRecognizer locationOfTouch:1 inView:self.tableView];
-
-        CGRect  rect = (CGRect){location1, location2.x - location1.x, location2.y - location1.y};
-        NSArray *indexPaths = [self.tableView indexPathsForRowsInRect:rect];
-
-        NSIndexPath *firstIndexPath = [indexPaths objectAtIndex:0];
-        NSIndexPath *lastIndexPath  = [indexPaths lastObject];
-        NSInteger    midIndex = ((float)(firstIndexPath.row + lastIndexPath.row) / 2) + 0.5;
-        NSIndexPath *midIndexPath = [NSIndexPath indexPathForRow:midIndex inSection:firstIndexPath.section];
-
-        if ([self.delegate respondsToSelector:@selector(gestureRecognizer:willCreateMultipleCellsAtIndexPath:)])
-        {
-            self.addingIndexPaths = [self.delegate gestureRecognizer:self
-                                  willCreateMultipleCellsAtIndexPath:midIndexPath];
-        }
-        else if ([self.delegate respondsToSelector:@selector(gestureRecognizer:willCreateCellAtIndexPath:)]) {
-            self.addingIndexPaths = [NSArray arrayWithObject:[self.delegate gestureRecognizer:self willCreateCellAtIndexPath:midIndexPath]];
-        } else {
-            self.addingIndexPaths = [NSArray arrayWithObject:midIndexPath];
-        }
-
-        if ( ! self.addingIndexPaths) {
-            NSLog(@"Should not begin pinch");
-            return NO;
-        }
+        
+        // We have to identify if the operation is a pinch in or pinch out in order to either add rows or shrink rows.
+        return YES;
 
     } else if (gestureRecognizer == self.longPressRecognizer) {
         
