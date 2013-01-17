@@ -181,7 +181,27 @@
 #pragma mark JTTableViewGestureAddingRowDelegate
 
 - (void)gestureRecognizer:(JTTableViewGestureRecognizer *)gestureRecognizer needsAddRowAtIndexPath:(NSIndexPath *)indexPath {
-    [self.rows insertObject:ADDING_CELL atIndex:indexPath.row];
+//    [self.rows insertObject:ADDING_CELL atIndex:indexPath.row];
+    [self gestureRecognizer:gestureRecognizer
+    needsAddRowAtIndexPaths:[NSArray arrayWithObject:indexPath]];
+}
+
+- (void)gestureRecognizer:(JTTableViewGestureRecognizer *)gestureRecognizer needsAddRowAtIndexPaths:(NSArray*)inIndexPathsArray
+{
+    for (NSIndexPath *anIndexPath in inIndexPathsArray)
+    {
+        [self.rows insertObject:ADDING_CELL
+                        atIndex:anIndexPath.row];
+    }
+}
+
+- (NSArray*)gestureRecognizer:(JTTableViewGestureRecognizer *)gestureRecognizer willCreateMultipleCellsAtIndexPath:(NSIndexPath *)indexPath;
+{
+    NSMutableArray *arrayOfIndexPathsToCreate = [NSMutableArray array];
+    for (int i=0; i<3; i++)
+        [arrayOfIndexPathsToCreate addObject:[NSIndexPath indexPathForRow:indexPath.row+i
+                                                                inSection:indexPath.section]];
+    return arrayOfIndexPathsToCreate;
 }
 
 - (void)gestureRecognizer:(JTTableViewGestureRecognizer *)gestureRecognizer needsCommitRowAtIndexPath:(NSIndexPath *)indexPath {
@@ -272,9 +292,38 @@
 }
 
 - (void)gestureRecognizer:(JTTableViewGestureRecognizer *)gestureRecognizer needsMoveRowAtIndexPath:(NSIndexPath *)sourceIndexPath toIndexPath:(NSIndexPath *)destinationIndexPath {
-    id object = [self.rows objectAtIndex:sourceIndexPath.row];
-    [self.rows removeObjectAtIndex:sourceIndexPath.row];
-    [self.rows insertObject:object atIndex:destinationIndexPath.row];
+//    id object = [self.rows objectAtIndex:sourceIndexPath.row];
+//    [self.rows removeObjectAtIndex:sourceIndexPath.row];
+//    [self.rows insertObject:object atIndex:destinationIndexPath.row];
+    [self gestureRecognizer:gestureRecognizer
+needsMoveRowsInIndexPathArray:[NSArray arrayWithObject:sourceIndexPath]
+                toIndexPath:destinationIndexPath];
+}
+
+- (void)gestureRecognizer:(JTTableViewGestureRecognizer *)gestureRecognizer needsMoveRowsInIndexPathArray:(NSArray *)sourceIndexPaths toIndexPath:(NSIndexPath *)destinationIndexPath
+{
+    NSMutableArray *objectArray = [NSMutableArray array];
+    for (NSIndexPath *sourceIP in sourceIndexPaths)
+        [objectArray addObject:[self.rows objectAtIndex:sourceIP.row]];
+
+    // Raj:
+    // Sort the index paths in descending order so that the bottom most row is first deleted
+    NSMutableArray *sourceIndexPathsMutableArray = [NSMutableArray arrayWithArray:sourceIndexPaths];
+    [sourceIndexPathsMutableArray sortUsingDescriptors:[NSArray arrayWithObject:[NSSortDescriptor sortDescriptorWithKey:@"self"
+                                                                                                              ascending:NO]]];
+    for (int i=0; i<[sourceIndexPathsMutableArray count]; i++)
+    {
+        NSIndexPath *indexPathRowToRemove = [sourceIndexPathsMutableArray objectAtIndex:i];
+        [self.rows removeObjectAtIndex:indexPathRowToRemove.row];
+    }
+    
+    // Last objects lets insert first
+    for (int i=[objectArray count]-1; i>=0; i--)
+    {
+        id objectToInsert = [objectArray objectAtIndex:i];
+        [self.rows insertObject:objectToInsert
+                        atIndex:destinationIndexPath.row];
+    }
 }
 
 - (void)gestureRecognizer:(JTTableViewGestureRecognizer *)gestureRecognizer needsReplacePlaceholderForRowAtIndexPath:(NSIndexPath *)indexPath {
