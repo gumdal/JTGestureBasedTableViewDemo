@@ -44,11 +44,13 @@ extern CGFloat const JTTableViewRowAnimationDuration;
 - (void)gestureRecognizer:(JTTableViewGestureRecognizer *)gestureRecognizer needsAddRowAtIndexPaths:(NSArray*)inIndexPathsArray;
 - (void)gestureRecognizer:(JTTableViewGestureRecognizer *)gestureRecognizer needsCommitRowAtIndexPath:(NSIndexPath *)indexPath;
 - (void)gestureRecognizer:(JTTableViewGestureRecognizer *)gestureRecognizer needsDiscardRowAtIndexPath:(NSIndexPath *)indexPath;
+- (void)gestureRecognizer:(JTTableViewGestureRecognizer *)gestureRecognizer needsDiscardRowAtIndexPaths:(NSArray *)indexPathsArray;
 
 @optional
 
 - (NSIndexPath *)gestureRecognizer:(JTTableViewGestureRecognizer *)gestureRecognizer willCreateCellAtIndexPath:(NSIndexPath *)indexPath;
 - (NSArray*)gestureRecognizer:(JTTableViewGestureRecognizer *)gestureRecognizer willCreateMultipleCellsAtIndexPath:(NSIndexPath *)indexPath;
+-(NSArray*)gestureRecognizer:(JTTableViewGestureRecognizer *)gestureRecognizer willRemoveMultipleCellsAtIndexPath:(NSIndexPath *)indexPath;
 - (CGFloat)gestureRecognizer:(JTTableViewGestureRecognizer *)gestureRecognizer heightForCommittingRowAtIndexPath:(NSIndexPath *)indexPath;
 
 

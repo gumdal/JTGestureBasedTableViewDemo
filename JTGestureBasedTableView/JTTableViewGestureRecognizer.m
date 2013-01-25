@@ -24,8 +24,9 @@ CGFloat const JTTableViewRowAnimationDuration          = 0.25;       // Rough gu
 @property (nonatomic, weak) id <JTTableViewGestureAddingRowDelegate, JTTableViewGestureEditingRowDelegate, JTTableViewGestureMoveRowDelegate> delegate;
 @property (nonatomic, weak) id <UITableViewDelegate>         tableViewDelegate;
 @property (nonatomic, weak) UITableView                     *tableView;
-@property (nonatomic, assign) CGFloat                        addingRowHeight;
-@property (nonatomic, strong) NSArray                   *addingIndexPaths;
+@property (nonatomic, assign) CGFloat                       addingRowHeight;
+@property (nonatomic, strong) NSArray                       *addingIndexPaths;
+@property (nonatomic, strong) NSArray                       *removingIndexPaths;
 @property (nonatomic, assign) JTTableViewCellEditingState    addingCellState;
 @property (nonatomic, assign) CGPoint                        startPinchingUpperPoint;
 @property (nonatomic, strong) UIPinchGestureRecognizer      *pinchRecognizer;
@@ -46,7 +47,7 @@ CGFloat const JTTableViewRowAnimationDuration          = 0.25;       // Rough gu
 
 @implementation JTTableViewGestureRecognizer
 @synthesize delegate, tableView, tableViewDelegate;
-@synthesize addingIndexPaths, startPinchingUpperPoint, addingRowHeight;
+@synthesize addingIndexPaths, startPinchingUpperPoint, addingRowHeight, removingIndexPaths;
 @synthesize pinchRecognizer, panRecognizer, longPressRecognizer;
 @synthesize state, addingCellState;
 @synthesize cellSnapshot, scrollingRate, movingTimer;
@@ -80,6 +81,7 @@ CGFloat const JTTableViewRowAnimationDuration          = 0.25;       // Rough gu
 }
 
 - (void)updateAddingIndexPathForCurrentLocation {
+    // This is for long tap and re-ordering a row
     NSIndexPath *indexPath  = nil;
     CGPoint location        = CGPointZero;
     
@@ -110,26 +112,70 @@ CGFloat const JTTableViewRowAnimationDuration          = 0.25;       // Rough gu
     [self.tableView beginUpdates];
     
     UITableViewCell *cell = nil;
-    for (NSIndexPath *anIndexPath in self.addingIndexPaths)
+    if (self.addingIndexPaths)
     {
-        cell = (UITableViewCell *)[self.tableView cellForRowAtIndexPath:anIndexPath];
-        CGFloat commitingCellHeight = self.tableView.rowHeight;
-        if ([self.delegate respondsToSelector:@selector(gestureRecognizer:heightForCommittingRowAtIndexPath:)]) {
-            commitingCellHeight = [self.delegate gestureRecognizer:self
-                                 heightForCommittingRowAtIndexPath:anIndexPath];
+        NSMutableArray *rowsToRemoveFromDataSource = [NSMutableArray array];
+        for (NSIndexPath *anIndexPath in self.addingIndexPaths)
+        {
+            cell = (UITableViewCell *)[self.tableView cellForRowAtIndexPath:anIndexPath];
+            CGFloat commitingCellHeight = self.tableView.rowHeight;
+            if ([self.delegate respondsToSelector:@selector(gestureRecognizer:heightForCommittingRowAtIndexPath:)]) {
+                commitingCellHeight = [self.delegate gestureRecognizer:self
+                                     heightForCommittingRowAtIndexPath:anIndexPath];
+            }
+            
+            if (cell.frame.size.height >= commitingCellHeight) {
+                [self.delegate gestureRecognizer:self needsCommitRowAtIndexPath:anIndexPath];
+            } else {
+//                [self.delegate gestureRecognizer:self needsDiscardRowAtIndexPath:anIndexPath];
+                [rowsToRemoveFromDataSource addObject:anIndexPath];
+                [self.tableView deleteRowsAtIndexPaths:[NSArray arrayWithObject:anIndexPath] withRowAnimation:UITableViewRowAnimationMiddle];
+            }
+            
+            // We would like to reload other rows as well
+            [self.tableView performSelector:@selector(reloadVisibleRowsExceptIndexPath:) withObject:anIndexPath afterDelay:JTTableViewRowAnimationDuration];
         }
-        
-        if (cell.frame.size.height >= commitingCellHeight) {
-            [self.delegate gestureRecognizer:self needsCommitRowAtIndexPath:anIndexPath];
-        } else {
-            [self.delegate gestureRecognizer:self needsDiscardRowAtIndexPath:anIndexPath];
-            [self.tableView deleteRowsAtIndexPaths:[NSArray arrayWithObject:anIndexPath] withRowAnimation:UITableViewRowAnimationMiddle];
+        [self.delegate gestureRecognizer:self
+             needsDiscardRowAtIndexPaths:rowsToRemoveFromDataSource];
+    }
+    else if (self.removingIndexPaths)
+    {
+        // This is a pinch out operation
+        NSMutableArray *rowsToRemoveFromDataSource = [NSMutableArray array];
+
+        for (NSIndexPath *anIndexPath in self.removingIndexPaths)
+        {
+            cell = (UITableViewCell*)[self.tableView cellForRowAtIndexPath:anIndexPath];
+            CGFloat commitingCellHeight = self.tableView.rowHeight;
+            if ([self.delegate respondsToSelector:@selector(gestureRecognizer:heightForCommittingRowAtIndexPath:)])
+            {
+                commitingCellHeight = [self.delegate gestureRecognizer:self
+                                     heightForCommittingRowAtIndexPath:anIndexPath];
+            }
+            
+            if (cell.frame.size.height <= commitingCellHeight)
+            {
+//                [self.delegate gestureRecognizer:self needsDiscardRowAtIndexPath:anIndexPath];
+                [rowsToRemoveFromDataSource addObject:anIndexPath];
+                [self.tableView deleteRowsAtIndexPaths:[NSArray arrayWithObject:anIndexPath] withRowAnimation:UITableViewRowAnimationMiddle];
+            }
+            else
+            {
+                // Do nothing, the rows are already there!
+            }
+            
+            // We would like to reload other rows as well
+            [self.tableView performSelector:@selector(reloadVisibleRowsExceptIndexPath:) withObject:anIndexPath afterDelay:JTTableViewRowAnimationDuration];
         }
-        
-        // We would like to reload other rows as well
-        [self.tableView performSelector:@selector(reloadVisibleRowsExceptIndexPath:) withObject:anIndexPath afterDelay:JTTableViewRowAnimationDuration];
+        [self.delegate gestureRecognizer:self
+             needsDiscardRowAtIndexPaths:rowsToRemoveFromDataSource];
+//        [self.delegate gestureRecognizer:self
+//             needsDiscardRowAtIndexPaths:self.removingIndexPaths];
+//        [self.tableView deleteRowsAtIndexPaths:self.removingIndexPaths
+//                              withRowAnimation:UITableViewRowAnimationMiddle];
     }
     self.addingIndexPaths = nil;
+    self.removingIndexPaths = nil;
     [self.tableView endUpdates];
     
     // Restore contentInset while touch ends
@@ -147,7 +193,7 @@ CGFloat const JTTableViewRowAnimationDuration          = 0.25;       // Rough gu
 - (void)pinchGestureRecognizer:(UIPinchGestureRecognizer *)recognizer {
 //    NSLog(@"%d %f %f", [recognizer numberOfTouches], [recognizer velocity], [recognizer scale]);
     if (recognizer.state == UIGestureRecognizerStateEnded || [recognizer numberOfTouches] < 2) {
-        if (self.addingIndexPaths) {
+        if (self.addingIndexPaths || self.removingIndexPaths) {
             [self commitOrDiscardCell];
         }
         [self setPinchOperationRowsUpdated:NO];
@@ -215,22 +261,45 @@ CGFloat const JTTableViewRowAnimationDuration          = 0.25;       // Rough gu
             }
             else if (diffOffsetY<0)
             {
+                self.addingRowHeight = self.tableView.rowHeight;
                 [self setPinchOperationRowsUpdated:YES];
+                if ([self.delegate respondsToSelector:@selector(gestureRecognizer:willRemoveMultipleCellsAtIndexPath:)])
+                {
+                    self.removingIndexPaths = [self.delegate gestureRecognizer:self
+                                            willRemoveMultipleCellsAtIndexPath:midIndexPath];
+                }
             }
         }
         
-        CGFloat diffRowHeight = CGRectGetHeight(rect) - CGRectGetHeight(rect)/[recognizer scale];
-        
-        //        NSLog(@"%f %f %f", CGRectGetHeight(rect), CGRectGetHeight(rect)/[recognizer scale], [recognizer scale]);
-        if (self.addingRowHeight - diffRowHeight >= 1 || self.addingRowHeight - diffRowHeight <= -1) {
-            self.addingRowHeight = diffRowHeight;
-            [self.tableView reloadData];
+        if ([self pinchOperationRowsUpdated])
+        {
+            CGFloat diffRowHeight = CGRectGetHeight(rect) - CGRectGetHeight(rect)/[recognizer scale];
+            NSLog(@"%f diffRowHeight = %f", self.addingRowHeight, diffRowHeight);
+            
+            //        NSLog(@"%f %f %f", CGRectGetHeight(rect), CGRectGetHeight(rect)/[recognizer scale], [recognizer scale]);
+            if (self.addingIndexPaths)
+            {
+                if (self.addingRowHeight - diffRowHeight >= 1 || self.addingRowHeight - diffRowHeight <= -1)
+                {
+                    self.addingRowHeight = diffRowHeight;
+                    [self.tableView reloadData];
+                }
+            }
+            else if (self.removingIndexPaths)
+            {
+                // Diff in row height is in negative
+                if (self.addingRowHeight - diffRowHeight >= (self.addingRowHeight+1) || self.addingRowHeight - diffRowHeight <= (self.addingRowHeight-1))
+                {
+                    self.addingRowHeight += diffRowHeight;
+                    [self.tableView reloadData];
+                }
+            }
+            
+            // Scrolls tableview according to the upper touch point to mimic a realistic
+            // dragging gesture
+            CGPoint newOffset   = (CGPoint){self.tableView.contentOffset.x, self.tableView.contentOffset.y+diffOffsetY};
+            [self.tableView setContentOffset:newOffset animated:NO];
         }
-        
-        // Scrolls tableview according to the upper touch point to mimic a realistic
-        // dragging gesture
-        CGPoint newOffset   = (CGPoint){self.tableView.contentOffset.x, self.tableView.contentOffset.y+diffOffsetY};
-        [self.tableView setContentOffset:newOffset animated:NO];
     }
 }
 
@@ -473,12 +542,19 @@ CGFloat const JTTableViewRowAnimationDuration          = 0.25;       // Rough gu
 #pragma mark UITableViewDelegate
 
 - (CGFloat)tableView:(UITableView *)aTableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
-    if ([self.addingIndexPaths containsObject:indexPath]
+    if (([self.addingIndexPaths containsObject:indexPath] || [self.removingIndexPaths containsObject:indexPath])
         && (self.state == JTTableViewGestureRecognizerStatePinching || self.state == JTTableViewGestureRecognizerStateDragging)) {
         // While state is in pinching or dragging mode, we intercept the row height
         // For Moving state, we leave our real delegate to determine the actual height
-        return MAX(1, self.addingRowHeight);
+        CGFloat newHeight = MAX(1, self.addingRowHeight);
+        NSLog(@"New Height = %f, addingRowHeight = %f", newHeight, self.addingRowHeight);
+        return newHeight;
     }
+//    else if ([self.addingIndexPaths containsObject:indexPath]
+//                 && (self.state == JTTableViewGestureRecognizerStatePinching || self.state == JTTableViewGestureRecognizerStateDragging))
+//    {
+//        
+//    }
     
     CGFloat normalCellHeight = aTableView.rowHeight;
     if ([self.tableViewDelegate respondsToSelector:@selector(tableView:heightForRowAtIndexPath:)]) {

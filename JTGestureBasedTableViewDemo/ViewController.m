@@ -25,9 +25,10 @@
 @synthesize grabbedObject;
 
 #define ADDING_CELL @"Continue..."
+#define REMOVING_CELL @"Continue To Remove!..."
 #define DONE_CELL @"Done"
 #define DUMMY_CELL @"Dummy"
-#define COMMITING_CREATE_CELL_HEIGHT 60
+#define COMMITING_CREATE_CELL_HEIGHT 50
 #define NORMAL_CELL_FINISHING_HEIGHT 60
 
 #pragma mark - View lifecycle
@@ -74,7 +75,7 @@
 
     NSObject *object = [self.rows objectAtIndex:indexPath.row];
     UIColor *backgroundColor = [[UIColor redColor] colorWithHueOffset:0.12 * indexPath.row / [self tableView:tableView numberOfRowsInSection:indexPath.section]];
-    if ([object isEqual:ADDING_CELL]) {
+    if ([object isEqual:ADDING_CELL] || [object isEqual:REMOVING_CELL]) {
         NSString *cellIdentifier = nil;
         TransformableTableViewCell *cell = nil;
 
@@ -204,6 +205,24 @@
     return arrayOfIndexPathsToCreate;
 }
 
+-(NSArray*)gestureRecognizer:(JTTableViewGestureRecognizer *)gestureRecognizer willRemoveMultipleCellsAtIndexPath:(NSIndexPath *)indexPath
+{
+    NSMutableArray *arrayOfIndexPathsToRemove = [NSMutableArray array];
+    int start = indexPath.row - 2;
+    int end = indexPath.row + 2;
+    if ((start<[self.rows count] && start>=0) && (end<[self.rows count]))
+    {
+        for (int i=start; i<=end; i++)
+        {
+            [arrayOfIndexPathsToRemove addObject:[NSIndexPath indexPathForRow:i
+                                                                    inSection:indexPath.section]];
+            [self.rows replaceObjectAtIndex:i
+                                 withObject:REMOVING_CELL];
+        }
+    }
+    return arrayOfIndexPathsToRemove;
+}
+
 - (void)gestureRecognizer:(JTTableViewGestureRecognizer *)gestureRecognizer needsCommitRowAtIndexPath:(NSIndexPath *)indexPath {
     [self.rows replaceObjectAtIndex:indexPath.row withObject:@"Added!"];
     TransformableTableViewCell *cell = (id)[gestureRecognizer.tableView cellForRowAtIndexPath:indexPath];
@@ -220,7 +239,19 @@
 }
 
 - (void)gestureRecognizer:(JTTableViewGestureRecognizer *)gestureRecognizer needsDiscardRowAtIndexPath:(NSIndexPath *)indexPath {
-    [self.rows removeObjectAtIndex:indexPath.row];
+//    [self.rows removeObjectAtIndex:indexPath.row];
+    [self gestureRecognizer:gestureRecognizer
+needsDiscardRowAtIndexPaths:[NSArray arrayWithObject:indexPath]];
+}
+
+- (void)gestureRecognizer:(JTTableViewGestureRecognizer *)gestureRecognizer needsDiscardRowAtIndexPaths:(NSArray *)indexPathsArray
+{
+    // Sort indexpath in reverse order
+    NSSortDescriptor *reverseOrder = [NSSortDescriptor sortDescriptorWithKey:@"self"
+                                                                   ascending:NO];
+    NSArray *indexPathsDecOrder = [indexPathsArray sortedArrayUsingDescriptors:[NSArray arrayWithObject:reverseOrder]];
+    for (int i=0; i<[indexPathsDecOrder  count]; i++)
+        [self.rows removeObjectAtIndex:[(NSIndexPath*)[indexPathsDecOrder objectAtIndex:i] row]];
 }
 
 // Uncomment to following code to disable pinch in to create cell gesture
